@@ -20,7 +20,8 @@ class StartProgram : Common {
             }
 
             fs::path directory = homeDir() / ".local" / "share" / "reim-pass";
-            loadConfig(&directory);
+            bool sync = false;
+            loadConfig(&directory, &sync);
             directory = fs::absolute(directory);
             fs::path dbPath = directory / "logindata.db";
 
@@ -120,7 +121,8 @@ class StartProgram : Common {
             }
 
             json config = {
-                {"data_directory", defaultDir.string()}
+                {"data_directory", defaultDir.string()},
+                {"synchronisation", false}
             };
 
             std::ofstream file(configPath);
@@ -131,7 +133,7 @@ class StartProgram : Common {
             return file.good();
         }
 
-        bool loadConfig (fs::path* directory) {
+        bool loadConfig (fs::path* directory, bool* sync) {
             fs::path configPath = configDir() / "config.json";
 
             std::error_code ec;
@@ -148,6 +150,7 @@ class StartProgram : Common {
             try {
                 json config = json::parse(file);
                 std::string dir = config.value("data_directory", "");
+                *sync = config.value("synchronisation", false);
                 if (dir.empty()) {
                     return false;
                 }

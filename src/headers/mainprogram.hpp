@@ -1,5 +1,6 @@
 #pragma once
 #include "common.hpp"
+#include <sodium/utils.h>
 
 class MainProgram : Common {
     public:
@@ -114,6 +115,58 @@ class MainProgram : Common {
             sodium_memzero(plain.data(), plain.size());
         }
 
+        void updateData (sqlite3* data, const std::string& passphrase) {
+            clear();
+            mvprintw(1, 2, "--=/ REIM-PASS \\=--");
+            std::string filter = input(3, "Search (empty = all)");
+
+            std::vector<LoginRow> rows = fetchRows(data, filter);
+
+            std::vector<std::string> selectedData;
+            for (const auto& r : rows) {
+                selectedData.push_back(r.site + "  |  " + r.login);
+            }
+            selectedData.push_back("> Back");
+
+            int sel = 0;
+            printMenu(selectedData, sel);
+
+            if (sel == (int)rows.size()) { 
+                return;
+            }
+
+            std::string plain;
+            clear();
+
+            std::string site = input(3, "Site (Leave empty to not change)");
+            std::string login = input(4, "Login (Leave empty to not change)");
+            std::string password = input(5, "Password (Leave empty to not change)", false);
+
+            if (site == "") {
+                site = rows[sel].site;
+            }
+            if (login == "") {
+                login = rows[sel].login;
+            }
+            if (password == "") {
+                password = decryptPassword(rows[sel].encPassword, passphrase, plain);
+            }
+
+            password = encryptPassword(password, passphrase);
+
+            bool ok = updateSQL(data, rows[sel].id, site, login, password);
+
+            if (ok) { 
+                mvprintw(7, 4, "Login data updated!");
+            }
+
+            sodium_memzero(plain.data(), plain.size());
+
+            mvprintw(9, 4, "Press any key to continue.");
+
+            getch();
+        }
+
         void deleteData (sqlite3* data, const std::string& passphrase) {
             clear();
             mvprintw(1, 2, "--=/ REIM-PASS \\=--");
@@ -213,6 +266,7 @@ class MainProgram : Common {
         void printBrowseMenu (sqlite3* data, const std::string& passphrase) {
             std::vector<std::string> browseMenu = {
                 "> Browse login data",
+                "> Update login data",
                 "> Delete login data",
                 "> Back"
             };
@@ -226,9 +280,12 @@ class MainProgram : Common {
                     selectData(data, passphrase);
                     break;
                 case 1:
-                    deleteData(data, passphrase);
+                    updateData(data, passphrase);
                     break;
                 case 2:
+                    deleteData(data, passphrase);
+                    break;
+                case 3:
                     return;
             }
         }

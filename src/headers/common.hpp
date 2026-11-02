@@ -173,6 +173,36 @@ class Common {
             return ok;
         }
 
+        bool updateSQL (sqlite3* data, int id, const std::string& site, const std::string& login, const std::string& password) {
+            const char* insertQuery =
+                "UPDATE login_data "
+                "SET site = ?, "
+                "login = ?, "
+                "password = ? "
+                "WHERE id = ?;";
+
+            sqlite3_stmt* stmt = nullptr;
+            if (sqlite3_prepare_v2(data, insertQuery, -1, &stmt, nullptr) != SQLITE_OK) {
+                mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
+                getch();
+                return false;
+            }
+
+            sqlite3_bind_text(stmt, 1, site.c_str(),  -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, login.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_blob(stmt, 3, password.data(), (int)password.size(), SQLITE_TRANSIENT);
+            sqlite3_bind_int(stmt, 4, id);
+
+            bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+            if (!ok) {
+                mvprintw(7, 4, "Update Error: %s", sqlite3_errmsg(data));
+                getch();
+            }
+
+            sqlite3_finalize(stmt);
+            return ok;
+        }
+
         bool deleteSQL (sqlite3* data, int id) {
             const char* deleteQuery =
                 "DELETE FROM login_data "
