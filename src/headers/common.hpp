@@ -154,10 +154,19 @@ class Common {
 
         // SQL Queries
 
+        std::string generateUid() {
+            unsigned char raw[16];
+            randombytes_buf(raw, sizeof raw);
+
+            char hex[sizeof raw * 2 + 1];
+            sodium_bin2hex(hex, sizeof hex, raw, sizeof raw);
+            return hex;
+        }
+
         bool insertSQL (sqlite3* data, const std::string& site, const std::string& login, const std::string& password) {
             const char* insertQuery =
-                "INSERT INTO login_data (site, login, password) "
-                "VALUES (?, ?, ?);";
+                "INSERT INTO login_data (uid, site, login, password) "
+                "VALUES (?, ?, ?, ?);";
 
             sqlite3_stmt* stmt = nullptr;
             if (sqlite3_prepare_v2(data, insertQuery, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -166,9 +175,12 @@ class Common {
                 return false;
             }
 
-            sqlite3_bind_text(stmt, 1, site.c_str(),  -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, 2, login.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_blob(stmt, 3, password.data(), (int)password.size(), SQLITE_TRANSIENT);
+            std::string uid = generateUid();
+
+            sqlite3_bind_text(stmt, 1, uid.c_str(),  -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, site.c_str(),  -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 3, login.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_blob(stmt, 4, password.data(), (int)password.size(), SQLITE_TRANSIENT);
 
             bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
             if (!ok) {
@@ -181,15 +193,16 @@ class Common {
         }
 
         bool updateSQL (sqlite3* data, int id, const std::string& site, const std::string& login, const std::string& password) {
-            const char* insertQuery =
+            const char* updateQuery =
                 "UPDATE login_data "
                 "SET site = ?, "
                 "login = ?, "
-                "password = ? "
+                "password = ?, "
+                "last = strftime('%d-%m-%Y %H:%M','now') "
                 "WHERE id = ?;";
 
             sqlite3_stmt* stmt = nullptr;
-            if (sqlite3_prepare_v2(data, insertQuery, -1, &stmt, nullptr) != SQLITE_OK) {
+            if (sqlite3_prepare_v2(data, updateQuery, -1, &stmt, nullptr) != SQLITE_OK) {
                 mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
                 getch();
                 return false;
@@ -212,7 +225,12 @@ class Common {
 
         bool deleteSQL (sqlite3* data, int id) {
             const char* deleteQuery =
-                "DELETE FROM login_data "
+                "UPDATE login_data "
+                "SET site = '', "
+                "login = '', "
+                "password = x'', "
+                "last = strftime('%d-%m-%Y %H:%M','now'), "
+                "deleted = 1 "
                 "WHERE id = ?;";
 
             sqlite3_stmt* stmt = nullptr;
@@ -226,7 +244,7 @@ class Common {
 
             bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
             if (!ok) {
-                mvprintw(7, 4, "Delete Error: %s", sqlite3_errmsg(data));
+                mvprintw(7, 4, "Update Error: %s", sqlite3_errmsg(data));
                 getch();
             }
 
@@ -266,44 +284,190 @@ class Common {
 
         // Synchronisation
 
-        void atomicCopy (const fs::path& src, const fs::path& dst) {
-            fs::path tmp = dst;
-            tmp += ".tmp";
+        static constexpr size_t kChunk = 64 * 1024;
 
-            fs::copy_file(src, tmp, fs::copy_options::overwrite_existing);
-            int fd = ::open(tmp.c_str(), O_RDONLY);
+        static sqlite3* openFromMemory(const std::string& data) {
+            sqlite3* db = nullptr;
+            if (sqlite3_open(":memory:", &db) != SQLITE_OK) {
+                return nullptr;
+            }
+
+            auto* mem = static_cast<unsigned char*>(sqlite3_malloc64(data.size()));
+            if (!mem) { 
+                sqlite3_close(db); return nullptr; 
+            }
+            memcpy(mem, data.data(), data.size());
+
+            if (sqlite3_deserialize(db, "main", mem, data.size(), data.size(), SQLITE_DESERIALIZE_FREEONCLOSE) != SQLITE_OK) {
+                sqlite3_close(db);
+                return nullptr;
+            }
+            return db;
+        }
+
+        void encryptFileTo(const fs::path& in, const fs::path& out, const std::string& pass) {
+            std::ifstream fin(in, std::ios::binary);
+            if (!fin) throw std::runtime_error("Can't open " + in.string());
+            std::ofstream fout(out, std::ios::binary | std::ios::trunc);
+            if (!fout) throw std::runtime_error("Can't open " + out.string());
+
+            unsigned char salt[crypto_pwhash_SALTBYTES];
+            unsigned char key[crypto_secretstream_xchacha20poly1305_KEYBYTES];
+            unsigned char header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
+            randombytes_buf(salt, sizeof salt);
+
+            if (crypto_pwhash(key, sizeof key, pass.c_str(), pass.size(), salt,
+                            crypto_pwhash_OPSLIMIT_INTERACTIVE,
+                            crypto_pwhash_MEMLIMIT_INTERACTIVE,
+                            crypto_pwhash_ALG_DEFAULT) != 0) {
+                throw std::runtime_error("Not enough memory");
+            }
+
+            crypto_secretstream_xchacha20poly1305_state st;
+            crypto_secretstream_xchacha20poly1305_init_push(&st, header, key);
+            sodium_memzero(key, sizeof key);
+
+            fout.write(reinterpret_cast<char*>(salt), sizeof salt);
+            fout.write(reinterpret_cast<char*>(header), sizeof header);
+
+            std::vector<unsigned char> buf(kChunk);
+            std::vector<unsigned char> enc(kChunk + crypto_secretstream_xchacha20poly1305_ABYTES);
+
+            bool last = false;
+            while (!last) {
+                fin.read(reinterpret_cast<char*>(buf.data()), kChunk);
+                size_t n = fin.gcount();
+                last = fin.eof() || fin.peek() == EOF;
+
+                unsigned long long encLen;
+                crypto_secretstream_xchacha20poly1305_push(
+                    &st, enc.data(), &encLen, buf.data(), n, nullptr, 0,
+                    last ? crypto_secretstream_xchacha20poly1305_TAG_FINAL : 0);
+                fout.write(reinterpret_cast<char*>(enc.data()), encLen);
+            }
+
+            fout.close();
+            if (!fout) throw std::runtime_error("Write failed");
+        }
+
+        std::optional<std::string> decryptFile(const fs::path& in, const std::string& pass) {
+            std::ifstream fin(in, std::ios::binary);
+            if (!fin) return std::nullopt;
+
+            unsigned char salt[crypto_pwhash_SALTBYTES];
+            unsigned char key[crypto_secretstream_xchacha20poly1305_KEYBYTES];
+            unsigned char header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
+
+            fin.read(reinterpret_cast<char*>(salt), sizeof salt);
+            fin.read(reinterpret_cast<char*>(header), sizeof header);
+            if (!fin) return std::nullopt;
+
+            if (crypto_pwhash(key, sizeof key, pass.c_str(), pass.size(), salt,
+                            crypto_pwhash_OPSLIMIT_INTERACTIVE,
+                            crypto_pwhash_MEMLIMIT_INTERACTIVE,
+                            crypto_pwhash_ALG_DEFAULT) != 0) {
+                return std::nullopt;
+            }
+
+            crypto_secretstream_xchacha20poly1305_state st;
+            int rc = crypto_secretstream_xchacha20poly1305_init_pull(&st, header, key);
+            sodium_memzero(key, sizeof key);
+            if (rc != 0) return std::nullopt;
+
+            const size_t encChunk = kChunk + crypto_secretstream_xchacha20poly1305_ABYTES;
+            std::vector<unsigned char> enc(encChunk), buf(kChunk);
+            std::string result;
+
+            bool gotFinal = false;
+            while (!gotFinal) {
+                fin.read(reinterpret_cast<char*>(enc.data()), encChunk);
+                size_t n = fin.gcount();
+                if (n == 0) break;
+
+                unsigned long long len;
+                unsigned char tag;
+                if (crypto_secretstream_xchacha20poly1305_pull(
+                        &st, buf.data(), &len, &tag, enc.data(), n, nullptr, 0) != 0) {
+                    sodium_memzero(buf.data(), buf.size());
+                    sodium_memzero(result.data(), result.size());
+                    return std::nullopt;
+                }
+                result.append(reinterpret_cast<char*>(buf.data()), len);
+                gotFinal = (tag == crypto_secretstream_xchacha20poly1305_TAG_FINAL);
+            }
+
+            sodium_memzero(buf.data(), buf.size());
+            if (!gotFinal) {                       // plik obcięty
+                sodium_memzero(result.data(), result.size());
+                return std::nullopt;
+            }
+            return result;
+        }
+
+        void fsyncPath(const fs::path& p) {
+            int fd = ::open(p.c_str(), O_RDONLY);
             if (fd < 0) {
                 throw std::system_error(errno, std::generic_category(), "open");
             }
             int rc = ::fsync(fd);
+            int err = errno;
+            ::close(fd);
             if (rc != 0) {
-                throw std::system_error(errno, std::generic_category(), "fsync");
+                throw std::system_error(err, std::generic_category(), "fsync");
             }
-
-            fs::rename(tmp, dst); 
         }
 
-        std::string fileHashHex (const fs::path& path) {
+        void atomicCopy(const fs::path& src, const fs::path& dst, const std::string& pass = "") {
+            if (fs::is_directory(src)) {
+                fs::create_directories(dst);
+                for (const auto& e : fs::directory_iterator(src)) {
+                    atomicCopy(e.path(), dst / e.path().filename(), pass);
+                }
+                return;
+            }
+
+            if (dst.has_parent_path()) {
+                fs::create_directories(dst.parent_path());
+            }
+
+            fs::path tmp = dst;
+            tmp += ".tmp";
+
+            try {
+                if (pass != "") {
+                    encryptFileTo(src, tmp, pass);
+                }
+                fsyncPath(tmp);
+            } catch (...) {
+                std::error_code ec;
+                fs::remove(tmp, ec);
+                throw;
+            }
+
+            fs::rename(tmp, dst);
+        }
+
+        std::string hashHex(const std::string& data) {
+            unsigned char h[crypto_generichash_BYTES];
+            crypto_generichash(h, sizeof h,
+                            reinterpret_cast<const unsigned char*>(data.data()),
+                            data.size(), nullptr, 0);
+
+            char hex[crypto_generichash_BYTES * 2 + 1];
+            sodium_bin2hex(hex, sizeof hex, h, sizeof h);
+            return hex;
+        }
+
+        std::string fileHashHex(const fs::path& path) {
             std::ifstream f(path, std::ios::binary);
             if (!f) {
                 throw std::runtime_error("Can't open " + path.string());
             }
 
-            crypto_generichash_state st;
-            crypto_generichash_init(&st, nullptr, 0, crypto_generichash_BYTES);
-
-            char buf[64 * 1024];
-            while (f.read(buf, sizeof buf) || f.gcount() > 0) {
-                crypto_generichash_update(&st,
-                    reinterpret_cast<const unsigned char*>(buf),
-                    static_cast<unsigned long long>(f.gcount()));
-            }
-
-            unsigned char h[crypto_generichash_BYTES];
-            crypto_generichash_final(&st, h, sizeof h);
-
-            char hex[crypto_generichash_BYTES * 2 + 1];
-            sodium_bin2hex(hex, sizeof hex, h, sizeof h);
+            std::string data((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+            std::string hex = hashHex(data);
+            sodium_memzero(data.data(), data.size());
             return hex;
         }
 

@@ -10,6 +10,12 @@ class StartProgram : Common {
     public:
 
         int run() {
+            initscr();
+            cbreak();
+            noecho();
+            keypad(stdscr, TRUE);
+            curs_set(0);
+
             if (sodium_init() < 0) {
                 clear();
                 mvprintw(1, 2, "Libsodium initialization failed");
@@ -19,7 +25,8 @@ class StartProgram : Common {
 
             fs::path directory = homeDir() / ".local" / "share" / "reim-pass";
             bool sync = false;
-            loadConfig(&directory, &sync);
+            std::string e2ePass = "";
+            loadConfig(&directory, &sync, &e2ePass);
             directory = fs::absolute(directory);
             fs::path dbPath = directory / "logindata.db";
 
@@ -47,21 +54,21 @@ class StartProgram : Common {
                 return 1;
             }
 
-            initscr();
-            cbreak();
-            noecho();
-            keypad(stdscr, TRUE);
-            curs_set(0);
-
             std::string passphrase;
+            Merging merg;
+            MainProgram mp;
 
             if (firstRun) {
                 const char* loginDataTable =
                     "CREATE TABLE IF NOT EXISTS login_data ("
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    "site TEXT NOT NULL,"
-                    "login TEXT NOT NULL,"
-                    "password BLOB NOT NULL);";
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                        "uid TEXT NOT NULL UNIQUE,"
+                        "site TEXT NOT NULL,"
+                        "login TEXT NOT NULL,"
+                        "password BLOB NOT NULL,"
+                        "last TEXT NOT NULL DEFAULT (strftime('%d-%m-%Y %H:%M','now')),"
+                        "deleted INTEGER NOT NULL DEFAULT 0"
+                    ");";
 
                 char* error = nullptr;
                 if (sqlite3_exec(data, loginDataTable, nullptr, nullptr, &error) != SQLITE_OK) {
@@ -75,6 +82,10 @@ class StartProgram : Common {
                 }
                 passphrase = SignUp(data);
             } else {
+                if (sync) {
+                    merg.Sync(directory, e2ePass);
+                }
+
                 passphrase = LogIn(data);
             }
 
@@ -84,12 +95,12 @@ class StartProgram : Common {
                 return 1;
             }
 
-            MainProgram mp;
-            mp.run(data, passphrase, directory, sync);
+            mp.run(data, passphrase);
 
+            sqlite3_close(data);
+            merg.Sync(directory, e2ePass);
             sodium_memzero(passphrase.data(), passphrase.size());
             endwin();
-            sqlite3_close(data);
             return 0;
         }
 
@@ -123,7 +134,8 @@ class StartProgram : Common {
 
             json config = {
                 {"data_directory", defaultDir.string()},
-                {"synchronisation", false}
+                {"synchronisation", false},
+                {"sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE"}
             };
 
             std::ofstream file(configPath);
@@ -134,7 +146,7 @@ class StartProgram : Common {
             return file.good();
         }
 
-        bool loadConfig (fs::path* directory, bool* sync) {
+        bool loadConfig (fs::path* directory, bool* sync, std::string* e2ePass) {
             fs::path configPath = configDir() / "config.json";
 
             std::error_code ec;
@@ -152,6 +164,7 @@ class StartProgram : Common {
                 json config = json::parse(file);
                 std::string dir = config.value("data_directory", "");
                 *sync = config.value("synchronisation", false);
+                *e2ePass = config.value("sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE");
                 if (dir.empty()) {
                     return false;
                 }

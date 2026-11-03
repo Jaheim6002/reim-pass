@@ -1,8 +1,8 @@
 #include "headers/manager.hpp"
 #include <sodium/utils.h>
 
-int MainProgram::run(sqlite3* data, const std::string& passphrase, fs::path directory, bool sync) {
-    printMainMenu(data, passphrase, directory, sync);
+int MainProgram::run(sqlite3* data, const std::string& passphrase) {
+    printMainMenu(data, passphrase);
     return 0;
 }
 
@@ -31,10 +31,10 @@ std::vector<MainProgram::LoginRow> MainProgram::fetchRows(sqlite3* db, const std
     std::vector<LoginRow> rows;
 
     const char* selectQuery =
-        "SELECT id, site, login, password FROM login_data "
+        "SELECT id, site, login, password, last FROM login_data "
         "WHERE (site LIKE ? OR login LIKE ?) "
-        "AND id != ? "
-        "ORDER BY site;";
+        "AND id != ? AND deleted != 1 "
+        "ORDER BY site DESC, last ASC;";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, selectQuery, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -55,6 +55,7 @@ std::vector<MainProgram::LoginRow> MainProgram::fetchRows(sqlite3* db, const std
         const void* blob = sqlite3_column_blob(stmt, 3);
         int len = sqlite3_column_bytes(stmt, 3);
         r.encPassword.assign(static_cast<const char*>(blob), len);
+        r.last = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
 
         rows.push_back(std::move(r));
     }
@@ -62,33 +63,43 @@ std::vector<MainProgram::LoginRow> MainProgram::fetchRows(sqlite3* db, const std
     return rows;
 }
 
-void MainProgram::selectData(sqlite3* data, const std::string& passphrase) {
+std::optional<MainProgram::LoginRow> MainProgram::pickRow(sqlite3* data) {
     clear();
     mvprintw(1, 2, "--=/ REIM-PASS \\=--");
     std::string filter = input(3, "Search (empty = all)");
 
     std::vector<LoginRow> rows = fetchRows(data, filter);
 
-    std::vector<std::string> selectedData;
+    std::vector<std::string> menu;
     for (const auto& r : rows) {
-        selectedData.push_back(r.site + "  |  " + r.login);
+        menu.push_back(r.site + "  |  " + r.login + "  |  " + r.last);
     }
-    selectedData.push_back("> Back");
+    menu.push_back("> Back");
 
     int sel = 0;
-    printMenu(selectedData, sel);
+    printMenu(menu, sel);
 
     if (sel == (int)rows.size()) {
+        return std::nullopt;
+    }
+
+    return std::move(rows[sel]);
+}
+
+void MainProgram::selectData(sqlite3* data, const std::string& passphrase) {
+    auto picked = pickRow(data);
+    if (!picked) {
         return;
     }
+    const LoginRow& row = *picked;
 
     std::string plain;
     clear();
     mvprintw(1, 2, "--=/ REIM-PASS \\=--");
-    mvprintw(3, 4, "Site:     %s", rows[sel].site.c_str());
-    mvprintw(4, 4, "Login:    %s", rows[sel].login.c_str());
+    mvprintw(3, 4, "Site:     %s", row.site.c_str());
+    mvprintw(4, 4, "Login:    %s", row.login.c_str());
 
-    if (decryptPassword(rows[sel].encPassword, passphrase, plain)) {
+    if (decryptPassword(row.encPassword, passphrase, plain)) {
         mvprintw(5, 4, "Password: %s", plain.c_str());
     } else {
         mvprintw(5, 4, "Wrong passphrase / corrupted data");
@@ -103,24 +114,11 @@ void MainProgram::selectData(sqlite3* data, const std::string& passphrase) {
 }
 
 void MainProgram::updateData(sqlite3* data, const std::string& passphrase) {
-    clear();
-    mvprintw(1, 2, "--=/ REIM-PASS \\=--");
-    std::string filter = input(3, "Search (empty = all)");
-
-    std::vector<LoginRow> rows = fetchRows(data, filter);
-
-    std::vector<std::string> selectedData;
-    for (const auto& r : rows) {
-        selectedData.push_back(r.site + "  |  " + r.login);
-    }
-    selectedData.push_back("> Back");
-
-    int sel = 0;
-    printMenu(selectedData, sel);
-
-    if (sel == (int)rows.size()) {
+    auto picked = pickRow(data);
+    if (!picked) {
         return;
     }
+    const LoginRow& row = *picked;
 
     std::string plain;
     clear();
@@ -130,14 +128,14 @@ void MainProgram::updateData(sqlite3* data, const std::string& passphrase) {
     std::string password = input(5, "Password (Leave empty to not change)", false);
 
     if (site == "") {
-        site = rows[sel].site;
+        site = row.site;
     }
     if (login == "") {
-        login = rows[sel].login;
+        login = row.login;
     }
     if (password == "") {
         // decryptPassword returns bool; the decrypted text lands in `plain`
-        if (!decryptPassword(rows[sel].encPassword, passphrase, plain)) {
+        if (!decryptPassword(row.encPassword, passphrase, plain)) {
             clear();
             mvprintw(1, 2, "--=/ REIM-PASS \\=--");
             mvprintw(3, 4, "Wrong passphrase / corrupted data");
@@ -150,7 +148,7 @@ void MainProgram::updateData(sqlite3* data, const std::string& passphrase) {
 
     std::string encrypted = encryptPassword(password, passphrase);
 
-    bool ok = updateSQL(data, rows[sel].id, site, login, encrypted);
+    bool ok = updateSQL(data, row.id, site, login, encrypted);
 
     if (ok) {
         mvprintw(7, 4, "Login data updated!");
@@ -165,29 +163,16 @@ void MainProgram::updateData(sqlite3* data, const std::string& passphrase) {
 }
 
 void MainProgram::deleteData(sqlite3* data, const std::string& passphrase) {
-    clear();
-    mvprintw(1, 2, "--=/ REIM-PASS \\=--");
-    std::string filter = input(3, "Search (empty = all)");
-
-    std::vector<LoginRow> rows = fetchRows(data, filter);
-
-    std::vector<std::string> selectedData;
-    for (const auto& r : rows) {
-        selectedData.push_back(r.site + "  |  " + r.login);
-    }
-    selectedData.push_back("> Back");
-
-    int sel = 0;
-    printMenu(selectedData, sel);
-
-    if (sel == (int)rows.size()) {
+    auto picked = pickRow(data);
+    if (!picked) {
         return;
     }
+    const LoginRow& row = *picked;
 
     std::string plain;
 
     // The passphrase is verified by decrypting the entry before allowing deletion
-    if (decryptPassword(rows[sel].encPassword, passphrase, plain)) {
+    if (decryptPassword(row.encPassword, passphrase, plain)) {
 
         clear();
         mvprintw(1, 2, "--=/ REIM-PASS \\=--");
@@ -198,13 +183,13 @@ void MainProgram::deleteData(sqlite3* data, const std::string& passphrase) {
             return;
         }
 
-        bool ok = deleteSQL(data, rows[sel].id);
+        bool ok = deleteSQL(data, row.id);
 
         clear();
         mvprintw(1, 2, "--=/ REIM-PASS \\=--");
 
         if (ok) {
-            mvprintw(3, 4, "Deleted %s login data", rows[sel].site.c_str());
+            mvprintw(3, 4, "Deleted %s login data", row.site.c_str());
         }
 
     } else {
@@ -286,7 +271,7 @@ void MainProgram::printBrowseMenu(sqlite3* data, const std::string& passphrase) 
     }
 }
 
-void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase, fs::path directory, bool sync) {
+void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase) {
     std::vector<std::string> mainMenu = {
         "> Add login data",
         "> Browse login data",
@@ -311,9 +296,6 @@ void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase, fs
                 generatePassword();
                 break;
             case 3:
-                if (sync) {
-                    atomicCopy(directory / "logindata.db", directory / "sync" / "logindata.db");
-                }
                 return;
         }
     }

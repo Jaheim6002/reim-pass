@@ -16,6 +16,7 @@ In this password manager you can:
 - Browse login data
 - Update login data
 - Delete login data
+- Generate Safe Passwords
 
 **Nobody can access your passwords without the passphrase.**
 
@@ -30,11 +31,12 @@ Everything is written in C++.
 
 ### Compilation
 
-To compile just enter the repository and use this command:
+To compile just enter the repository and use this commands:
 
 ```bash
 
 cmake -S . -B build
+cmake --build build
 
 ```
 
@@ -44,6 +46,7 @@ you can configure the program with a `config.json` file in the `~/.config/reim-p
 
 - Set `data_directory` property to directory in which you want the database to be stored. Default directory is in `~/.local/share/reim-pass/`.
 - Change `synchronisation` property to true if you want synchronisation between devices. Default is `false`.
+- Set `sync_e2e_encryption` property to your E2E encryption passphrase (Used only for synchronisation purposes, ignored if previous is set to false). Default is `INSERT.HERE.A.STRONG.PASSPHRASE`. It's recommended to generate the passphrase using Reim Pass
 - Change `copy_password` property to false if you don't want the program to automatically copy the password to your clipboard. Default is `true`.
 - Set `clear_clipboard` property to time after you want the program to automatically clear your clipboard (in seconds). Default is `90`.
 - Change `copy_without_showing` property to true if you want to just copy the password to clipboard without showing it in the terminal. Default is `false`.
