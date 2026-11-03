@@ -1,17 +1,21 @@
-#include "headers/mainprogram.hpp"
-#include <filesystem>
+#include "headers/all.hpp"
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <pwd.h>
 #include <unistd.h>
 
-namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 class StartProgram : Common {
     public:
 
         int run() {
+            initscr();
+            cbreak();
+            noecho();
+            keypad(stdscr, TRUE);
+            curs_set(0);
+
             if (sodium_init() < 0) {
                 clear();
                 mvprintw(1, 2, "Libsodium initialization failed");
@@ -20,7 +24,12 @@ class StartProgram : Common {
             }
 
             fs::path directory = homeDir() / ".local" / "share" / "reim-pass";
-            loadConfig(&directory);
+            bool sync = false;
+            std::string e2ePass = "";
+            bool copyPassword = true;
+            int copySeconds = 20;
+            bool showPassword = true;
+            loadConfig(&directory, &sync, &e2ePass, &copyPassword, &copySeconds, &showPassword);
             directory = fs::absolute(directory);
             fs::path dbPath = directory / "logindata.db";
 
@@ -28,6 +37,9 @@ class StartProgram : Common {
 
             std::error_code ec;
             fs::create_directories(directory, ec);
+            if (sync) {
+                fs::create_directories(directory / "sync", ec);
+            }
             if (ec) {
                 clear();
                 mvprintw(1, 2, "Cannot create directory: %s", ec.message().c_str());
@@ -45,21 +57,21 @@ class StartProgram : Common {
                 return 1;
             }
 
-            initscr();
-            cbreak();
-            noecho();
-            keypad(stdscr, TRUE);
-            curs_set(0);
-
             std::string passphrase;
+            Merging merg;
+            MainProgram mp;
 
             if (firstRun) {
                 const char* loginDataTable =
                     "CREATE TABLE IF NOT EXISTS login_data ("
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    "site TEXT NOT NULL,"
-                    "login TEXT NOT NULL,"
-                    "password BLOB NOT NULL);";
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                        "uid TEXT NOT NULL UNIQUE,"
+                        "site TEXT NOT NULL,"
+                        "login TEXT NOT NULL,"
+                        "password BLOB NOT NULL,"
+                        "last TEXT NOT NULL DEFAULT (strftime('%d-%m-%Y %H:%M','now')),"
+                        "deleted INTEGER NOT NULL DEFAULT 0"
+                    ");";
 
                 char* error = nullptr;
                 if (sqlite3_exec(data, loginDataTable, nullptr, nullptr, &error) != SQLITE_OK) {
@@ -73,6 +85,10 @@ class StartProgram : Common {
                 }
                 passphrase = SignUp(data);
             } else {
+                if (sync) {
+                    merg.Sync(directory, e2ePass);
+                }
+
                 passphrase = LogIn(data);
             }
 
@@ -82,12 +98,14 @@ class StartProgram : Common {
                 return 1;
             }
 
-            MainProgram mp;
-            mp.run(data, passphrase);
+            mp.run(data, passphrase, copyPassword, copySeconds, showPassword);
 
+            sqlite3_close(data);
+            if (sync) {
+                merg.Sync(directory, e2ePass);
+            }
             sodium_memzero(passphrase.data(), passphrase.size());
             endwin();
-            sqlite3_close(data);
             return 0;
         }
 
@@ -120,7 +138,12 @@ class StartProgram : Common {
             }
 
             json config = {
-                {"data_directory", defaultDir.string()}
+                {"data_directory", defaultDir.string()},
+                {"synchronisation", false},
+                {"sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE"},
+                {"copy_password", true},
+                {"clear_clipboard", 20},
+                {"show_password", true}
             };
 
             std::ofstream file(configPath);
@@ -131,7 +154,7 @@ class StartProgram : Common {
             return file.good();
         }
 
-        bool loadConfig (fs::path* directory) {
+        bool loadConfig (fs::path* directory, bool* sync, std::string* e2ePass, bool* copyPassword, int* copySeconds, bool* showPassword) {
             fs::path configPath = configDir() / "config.json";
 
             std::error_code ec;
@@ -148,6 +171,11 @@ class StartProgram : Common {
             try {
                 json config = json::parse(file);
                 std::string dir = config.value("data_directory", "");
+                *sync = config.value("synchronisation", false);
+                *e2ePass = config.value("sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE");
+                *copyPassword = config.value("copy_password", true);
+                *copySeconds = config.value("clear_clipboard", 20);
+                *showPassword = config.value("show_password", true);
                 if (dir.empty()) {
                     return false;
                 }

@@ -1,0 +1,6 @@
+#CMAKE
+build/
+
+.directory
+.reim-pass/
+reim-pass
