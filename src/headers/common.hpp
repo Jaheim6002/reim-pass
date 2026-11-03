@@ -7,6 +7,13 @@
 #include <cstring>
 #include <stdexcept>
 #include <optional>
+#include <filesystem>
+#include <fcntl.h>
+#include <unistd.h>
+#include <system_error>
+#include <fstream>
+
+namespace fs = std::filesystem;
 
 class Common {
     protected:
@@ -255,5 +262,65 @@ class Common {
 
             sqlite3_finalize(stmt);
             return result;
+        }
+
+        // Synchronisation
+
+        void atomicCopy (const fs::path& src, const fs::path& dst) {
+            fs::path tmp = dst;
+            tmp += ".tmp";
+
+            fs::copy_file(src, tmp, fs::copy_options::overwrite_existing);
+            int fd = ::open(tmp.c_str(), O_RDONLY);
+            if (fd < 0) {
+                throw std::system_error(errno, std::generic_category(), "open");
+            }
+            int rc = ::fsync(fd);
+            if (rc != 0) {
+                throw std::system_error(errno, std::generic_category(), "fsync");
+            }
+
+            fs::rename(tmp, dst); 
+        }
+
+        std::string fileHashHex (const fs::path& path) {
+            std::ifstream f(path, std::ios::binary);
+            if (!f) {
+                throw std::runtime_error("Can't open " + path.string());
+            }
+
+            crypto_generichash_state st;
+            crypto_generichash_init(&st, nullptr, 0, crypto_generichash_BYTES);
+
+            char buf[64 * 1024];
+            while (f.read(buf, sizeof buf) || f.gcount() > 0) {
+                crypto_generichash_update(&st,
+                    reinterpret_cast<const unsigned char*>(buf),
+                    static_cast<unsigned long long>(f.gcount()));
+            }
+
+            unsigned char h[crypto_generichash_BYTES];
+            crypto_generichash_final(&st, h, sizeof h);
+
+            char hex[crypto_generichash_BYTES * 2 + 1];
+            sodium_bin2hex(hex, sizeof hex, h, sizeof h);
+            return hex;
+        }
+
+        std::string readBase (const fs::path& path) {
+            std::ifstream f(path);
+            std::string hash;
+            std::getline(f, hash);
+            return hash;
+        }
+
+        void writeBase (const fs::path& path, const std::string& hash) {
+            std::ofstream f(path, std::ios::trunc);
+            f << hash << '\n';
+            f.flush();
+            f.close();
+            if (!f) {
+                throw std::runtime_error("Can't write " + path.string());
+            }
         }
 };

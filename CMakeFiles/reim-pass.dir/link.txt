@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/reim-pass.dir/link.d "CMakeFiles/reim-pass.dir/src/start.cpp.o" "CMakeFiles/reim-pass.dir/src/manager.cpp.o" "CMakeFiles/reim-pass.dir/src/merge.cpp.o" -o reim-pass  /usr/lib/libsodium.so /usr/lib/libsqlite3.so /usr/lib/libncursesw.so

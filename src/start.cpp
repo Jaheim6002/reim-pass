@@ -1,11 +1,9 @@
-#include "headers/mainprogram.hpp"
-#include <filesystem>
+#include "headers/all.hpp"
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <pwd.h>
 #include <unistd.h>
 
-namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 class StartProgram : Common {
@@ -29,6 +27,9 @@ class StartProgram : Common {
 
             std::error_code ec;
             fs::create_directories(directory, ec);
+            if (sync) {
+                fs::create_directories(directory / "sync", ec);
+            }
             if (ec) {
                 clear();
                 mvprintw(1, 2, "Cannot create directory: %s", ec.message().c_str());
@@ -84,7 +85,7 @@ class StartProgram : Common {
             }
 
             MainProgram mp;
-            mp.run(data, passphrase);
+            mp.run(data, passphrase, directory, sync);
 
             sodium_memzero(passphrase.data(), passphrase.size());
             endwin();
