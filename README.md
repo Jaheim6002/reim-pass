@@ -34,7 +34,7 @@ To compile just enter the repository and use this command:
 
 ```bash
 
-cmake -S .
+cmake -S . -B build
 
 ```
 
