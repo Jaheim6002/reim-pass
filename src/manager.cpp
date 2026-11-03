@@ -1,8 +1,10 @@
 #include "headers/manager.hpp"
 #include <sodium/utils.h>
+#include <sys/wait.h>
+#include <cstdlib>
 
-int MainProgram::run(sqlite3* data, const std::string& passphrase) {
-    printMainMenu(data, passphrase);
+int MainProgram::run(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show) {
+    printMainMenu(data, passphrase, copy, copySec, show);
     return 0;
 }
 
@@ -86,7 +88,7 @@ std::optional<MainProgram::LoginRow> MainProgram::pickRow(sqlite3* data) {
     return std::move(rows[sel]);
 }
 
-void MainProgram::selectData(sqlite3* data, const std::string& passphrase) {
+void MainProgram::selectData(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show) {
     auto picked = pickRow(data);
     if (!picked) {
         return;
@@ -100,7 +102,16 @@ void MainProgram::selectData(sqlite3* data, const std::string& passphrase) {
     mvprintw(4, 4, "Login:    %s", row.login.c_str());
 
     if (decryptPassword(row.encPassword, passphrase, plain)) {
-        mvprintw(5, 4, "Password: %s", plain.c_str());
+        if (show) {
+            mvprintw(5, 4, "Password: %s", plain.c_str());
+        }
+        if (copy) {
+            if (copyToClipboard(plain, copySec)) {
+                mvprintw(6, 4, "Copied to clipboard (cleared after %d s)", copySec);
+            } else {
+                mvprintw(6, 4, "Couldn't find clipboard");
+            }
+        }
     } else {
         mvprintw(5, 4, "Wrong passphrase / corrupted data");
     }
@@ -205,7 +216,7 @@ void MainProgram::deleteData(sqlite3* data, const std::string& passphrase) {
     getch();
 }
 
-void MainProgram::generatePassword() {
+void MainProgram::generatePassword(bool copy, int copySec, bool show) {
     // Visually ambiguous characters (l, I, 1, O, 0) are left out on purpose
     const std::string lower   = "abcdefghijkmnopqrstuvwxyz";
     const std::string upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -235,8 +246,17 @@ void MainProgram::generatePassword() {
     clear();
     mvprintw(1, 2, "--=/ REIM-PASS \\=--");
 
-    mvprintw(3, 4, "Password generated (copy it):");
-    mvprintw(4, 4, "%s", password.c_str());
+    mvprintw(3, 4, "Password generated:");
+    if (show) {
+            mvprintw(5, 4, "Password: %s", password.c_str());
+        }
+        if (copy) {
+            if (copyToClipboard(password, copySec)) {
+                mvprintw(5, 4, "Copied to clipboard (cleared after %d s)", copySec);
+            } else {
+                mvprintw(5, 4, "Couldn't find clipboard");
+            }
+    }
     mvprintw(6, 4, "Press any key to continue.");
 
     getch();
@@ -244,7 +264,7 @@ void MainProgram::generatePassword() {
     sodium_memzero(password.data(), password.size());
 }
 
-void MainProgram::printBrowseMenu(sqlite3* data, const std::string& passphrase) {
+void MainProgram::printBrowseMenu(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show) {
     std::vector<std::string> browseMenu = {
         "> Browse login data",
         "> Update login data",
@@ -258,7 +278,7 @@ void MainProgram::printBrowseMenu(sqlite3* data, const std::string& passphrase) 
 
     switch (selected) {
         case 0:
-            selectData(data, passphrase);
+            selectData(data, passphrase, copy, copySec, show);
             break;
         case 1:
             updateData(data, passphrase);
@@ -271,7 +291,7 @@ void MainProgram::printBrowseMenu(sqlite3* data, const std::string& passphrase) 
     }
 }
 
-void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase) {
+void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show) {
     std::vector<std::string> mainMenu = {
         "> Add login data",
         "> Browse login data",
@@ -290,13 +310,120 @@ void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase) {
                 insertData(data, passphrase);
                 break;
             case 1:
-                printBrowseMenu(data, passphrase);
+                printBrowseMenu(data, passphrase, copy, copySec, show);
                 break;
             case 2:
-                generatePassword();
+                generatePassword(copy, copySec, show);
                 break;
             case 3:
                 return;
         }
     }
+}
+bool MainProgram::inPath(const std::string& programName) {
+    const char* pathEnv = std::getenv("PATH");
+    if (!pathEnv) {
+        return false;
+    }
+
+    std::string pathList = pathEnv;
+    size_t segmentStart = 0;
+
+    while (segmentStart <= pathList.size()) {
+        size_t segmentEnd = pathList.find(':', segmentStart);
+        if (segmentEnd == std::string::npos) {
+            segmentEnd = pathList.size();
+        }
+
+        std::string candidatePath = pathList.substr(segmentStart, segmentEnd - segmentStart) + "/" + programName;
+
+        if (access(candidatePath.c_str(), X_OK) == 0) {
+            return true;
+        }
+        segmentStart = segmentEnd + 1;
+    }
+    return false;
+}
+
+std::optional<std::vector<std::string>> MainProgram::detectClipboard() {
+    #ifdef __APPLE__
+    return std::vector<std::string>{"pbcopy"};
+    #else
+        if (std::getenv("WAYLAND_DISPLAY") && inPath("wl-copy"))
+            return std::vector<std::string>{"wl-copy"};
+        if (std::getenv("DISPLAY")) {
+            if (inPath("xclip"))
+                return std::vector<std::string>{"xclip", "-selection", "clipboard", "-in"};
+            if (inPath("xsel"))
+                return std::vector<std::string>{"xsel", "--clipboard", "--input"};
+        }
+        return std::nullopt;
+    #endif
+}
+
+bool MainProgram::runWithInput(const std::vector<std::string>& tool, const std::string& input) {
+    int fd[2];
+    if (pipe(fd) != 0) return false;
+
+    pid_t pid = fork();
+    if (pid < 0) { close(fd[0]); close(fd[1]); return false; }
+    if (pid == 0) {
+        dup2(fd[0], STDIN_FILENO);
+        close(fd[0]); close(fd[1]);
+        int null = open("/dev/null", O_WRONLY);
+        dup2(null, STDOUT_FILENO);
+        dup2(null, STDERR_FILENO);
+
+        std::vector<char*> argv;
+        for (auto& a : tool) argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execvp(argv[0], argv.data());
+        _exit(127);
+    }
+
+    close(fd[0]);
+    signal(SIGPIPE, SIG_IGN);
+    size_t off = 0;
+    while (off < input.size()) {
+        ssize_t n = write(fd[1], input.data() + off, input.size() - off);
+        if (n <= 0) break;
+        off += n;
+    }
+    close(fd[1]);
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+bool MainProgram::copyToClipboard(const std::string& password, int seconds) {
+    auto tool = detectClipboard();
+    if (!tool) {
+        return false;
+    }
+    if (!runWithInput(*tool, password)) {
+        return false;
+    }
+    std::vector<std::string> clearCmd = *tool;
+    if (clearCmd[0] == "wl-copy") {
+        clearCmd = {"wl-copy", "--clear"};
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        return true;
+    }
+    if (pid == 0) {
+        if (fork() != 0) {
+            _exit(0);
+        }
+        setsid();
+        sodium_memzero(const_cast<char*>(password.data()), password.size());
+        sleep(seconds);
+        runWithInput(clearCmd, "");
+        runWithInput(*tool, "");
+        _exit(0);
+    }
+    waitpid(pid, nullptr, 0);
+    return true;
 }

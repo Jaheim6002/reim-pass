@@ -26,7 +26,10 @@ class StartProgram : Common {
             fs::path directory = homeDir() / ".local" / "share" / "reim-pass";
             bool sync = false;
             std::string e2ePass = "";
-            loadConfig(&directory, &sync, &e2ePass);
+            bool copyPassword = true;
+            int copySeconds = 20;
+            bool showPassword = true;
+            loadConfig(&directory, &sync, &e2ePass, &copyPassword, &copySeconds, &showPassword);
             directory = fs::absolute(directory);
             fs::path dbPath = directory / "logindata.db";
 
@@ -95,10 +98,12 @@ class StartProgram : Common {
                 return 1;
             }
 
-            mp.run(data, passphrase);
+            mp.run(data, passphrase, copyPassword, copySeconds, showPassword);
 
             sqlite3_close(data);
-            merg.Sync(directory, e2ePass);
+            if (sync) {
+                merg.Sync(directory, e2ePass);
+            }
             sodium_memzero(passphrase.data(), passphrase.size());
             endwin();
             return 0;
@@ -135,7 +140,10 @@ class StartProgram : Common {
             json config = {
                 {"data_directory", defaultDir.string()},
                 {"synchronisation", false},
-                {"sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE"}
+                {"sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE"},
+                {"copy_password", true},
+                {"clear_clipboard", 20},
+                {"show_password", true}
             };
 
             std::ofstream file(configPath);
@@ -146,7 +154,7 @@ class StartProgram : Common {
             return file.good();
         }
 
-        bool loadConfig (fs::path* directory, bool* sync, std::string* e2ePass) {
+        bool loadConfig (fs::path* directory, bool* sync, std::string* e2ePass, bool* copyPassword, int* copySeconds, bool* showPassword) {
             fs::path configPath = configDir() / "config.json";
 
             std::error_code ec;
@@ -165,6 +173,9 @@ class StartProgram : Common {
                 std::string dir = config.value("data_directory", "");
                 *sync = config.value("synchronisation", false);
                 *e2ePass = config.value("sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE");
+                *copyPassword = config.value("copy_password", true);
+                *copySeconds = config.value("clear_clipboard", 20);
+                *showPassword = config.value("show_password", true);
                 if (dir.empty()) {
                     return false;
                 }
