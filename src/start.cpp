@@ -47,6 +47,15 @@ class StartProgram : Common {
                 return 1;
             }
 
+            Merging merg;
+            MainProgram mp;
+
+            if (!firstRun) {
+                if (sync) {
+                merg.Sync(directory, e2ePass);
+                }
+            }
+
             sqlite3* data = nullptr;
             if (sqlite3_open(dbPath.string().c_str(), &data) != SQLITE_OK) {
                 clear();
@@ -58,9 +67,7 @@ class StartProgram : Common {
             }
 
             std::string passphrase;
-            Merging merg;
-            MainProgram mp;
-
+            
             if (firstRun) {
                 const char* loginDataTable =
                     "CREATE TABLE IF NOT EXISTS login_data ("
@@ -85,10 +92,6 @@ class StartProgram : Common {
                 }
                 passphrase = SignUp(data);
             } else {
-                if (sync) {
-                    merg.Sync(directory, e2ePass);
-                }
-
                 passphrase = LogIn(data);
             }
 

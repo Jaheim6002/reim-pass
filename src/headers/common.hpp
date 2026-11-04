@@ -436,6 +436,8 @@ class Common {
             try {
                 if (pass != "") {
                     encryptFileTo(src, tmp, pass);
+                } else {
+                    fs::copy_file(src, tmp, fs::copy_options::overwrite_existing);
                 }
                 fsyncPath(tmp);
             } catch (...) {
