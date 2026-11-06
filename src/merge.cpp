@@ -1,44 +1,50 @@
 #include "headers/merge.hpp"
 
-void Merging::Sync (const fs::path& directory, std::string e2ePass) {
-    fs::path basePath = directory / "base";
+void Merging::Sync(const fs::path& directory, std::string e2ePass) {
+    fs::path basePath  = directory / "base";
     fs::path localPath = directory / "logindata.db";
-    fs::path syncPath = directory / "sync" / "logindata.db";
-    std::string base = readBase(basePath);
-    std::string local = fileHashHex(localPath);
-    std::string sync;
-    if (fs::exists(syncPath)) {
-        auto dec = decryptFile(syncPath, e2ePass);
-        if (!dec) {
-            throw std::runtime_error("Can't decrypt " + syncPath.string());
-        }
-        sync = std::move(*dec);
-    }
-    std::string syncHash = hashHex(sync);
+    fs::path syncPath  = directory / "sync" / "logindata.db";
 
-    if (local == syncHash) {
-        writeBase(basePath, local);
-    } else if (local == base) {
-        mvprintw(1, 2, "--=/ REIM-PASS \\=--");
-        mvprintw(3, 4, "Sync: Pulling...");
-        atomicCopy(syncPath, localPath); // pull
-        writeBase(basePath, syncHash);
-    } else if (syncHash == base || !fs::exists(syncPath)) {
-        mvprintw(1, 2, "--=/ REIM-PASS \\=--");
-        mvprintw(3, 4, "Sync: Pushing...");
-        atomicCopy(localPath, syncPath, e2ePass); // push
-        writeBase(basePath, syncHash);
-    } else {
-        mvprintw(1, 2, "--=/ REIM-PASS \\=--");
-        mvprintw(3, 4, "Sync: Conflict! — Merging...");
-        //Merge();
-        atomicCopy(localPath, syncPath, e2ePass); // push for now
-        writeBase(basePath, local);
+    bool localExists  = fs::exists(localPath);
+    bool remoteExists = fs::exists(syncPath);
+    if (!localExists && !remoteExists) return;
+
+    std::string remote, remoteHash;
+    if (remoteExists) {
+        auto dec = decryptFile(syncPath, e2ePass);
+        if (!dec) throw std::runtime_error("Can't decrypt sync file (wrong sync_e2e_encryption?)");
+        remote = std::move(*dec);
+        remoteHash = hashHex(remote);
     }
-    sodium_memzero(sync.data(), sync.size());
+
+    if (!localExists) {                         // new device: pull
+        atomicWrite(localPath, remote);
+        writeBase(basePath, remoteHash);
+    } else {
+        std::string base  = readBase(basePath);
+        std::string local = fileHashHex(localPath);
+
+        if (!remoteExists) {                    // nothing remote yet: push
+            atomicCopy(localPath, syncPath, e2ePass);
+            writeBase(basePath, local);
+        } else if (local == remoteHash) {
+            writeBase(basePath, local);
+        } else if (local == base) {             // only remote changed: pull
+            atomicWrite(localPath, remote);
+            writeBase(basePath, remoteHash);
+        } else if (remoteHash == base) {        // only local changed: push
+            atomicCopy(localPath, syncPath, e2ePass);
+            writeBase(basePath, local);
+        } else {                                // both changed: merge, then push
+            Merge(localPath, remote);
+            atomicCopy(localPath, syncPath, e2ePass);
+            writeBase(basePath, fileHashHex(localPath));
+        }
+    }
+    sodium_memzero(remote.data(), remote.size());
 }
 
-void Merging::Merge(const fs::path& localPath, const std::string& syncData, const std::string& passphrase) {
+void Merging::Merge(const fs::path& localPath, const std::string& syncData) {
     sqlite3* local = nullptr;
     if (sqlite3_open(localPath.c_str(), &local) != SQLITE_OK) {
         throw std::runtime_error("Can't open local database");
@@ -52,9 +58,6 @@ void Merging::Merge(const fs::path& localPath, const std::string& syncData, cons
     try {
         auto ver = selectPassword(remote, kVerifierId);
         std::string tmp;
-        if (!ver || !decryptPassword(*ver, passphrase, tmp)) {
-            throw std::runtime_error("Sync database uses a different passphrase");
-        }
 
         sqlite3_exec(local, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
 

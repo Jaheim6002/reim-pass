@@ -198,7 +198,7 @@ class Common {
                 "SET site = ?, "
                 "login = ?, "
                 "password = ?, "
-                "last = strftime('%d-%m-%Y %H:%M','now') "
+                "last = strftime('%Y-%m-%d %H:%M','now') "
                 "WHERE id = ?;";
 
             sqlite3_stmt* stmt = nullptr;
@@ -229,7 +229,7 @@ class Common {
                 "SET site = '', "
                 "login = '', "
                 "password = x'', "
-                "last = strftime('%d-%m-%Y %H:%M','now'), "
+                "last = strftime('%Y-%m-%d %H:%M','now'), "
                 "deleted = 1 "
                 "WHERE id = ?;";
 
@@ -446,6 +446,26 @@ class Common {
                 throw;
             }
 
+            fs::rename(tmp, dst);
+        }
+
+        void atomicWrite(const fs::path& dst, const std::string& data) {
+            fs::path tmp = dst;
+            tmp += ".tmp";
+            try {
+                {
+                    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+                    if (!f) throw std::runtime_error("Can't open " + tmp.string());
+                    f.write(data.data(), data.size());
+                    f.flush();
+                    if (!f) throw std::runtime_error("Write failed");
+                }
+                fsyncPath(tmp);
+            } catch (...) {
+                std::error_code ec;
+                fs::remove(tmp, ec);
+                throw;
+            }
             fs::rename(tmp, dst);
         }
 

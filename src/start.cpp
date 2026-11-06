@@ -49,10 +49,14 @@ class StartProgram : Common {
 
             Merging merg;
             MainProgram mp;
-
-            if (!firstRun) {
-                if (sync) {
-                merg.Sync(directory, e2ePass);
+            
+            if (sync) {
+                try { merg.Sync(directory, e2ePass); }
+                catch (const std::exception& e) {
+                    clear();
+                    mvprintw(1, 2, "Sync error: %s", e.what());
+                    mvprintw(3, 2, "Press any key.");
+                    getch();
                 }
             }
 
@@ -76,7 +80,7 @@ class StartProgram : Common {
                         "site TEXT NOT NULL,"
                         "login TEXT NOT NULL,"
                         "password BLOB NOT NULL,"
-                        "last TEXT NOT NULL DEFAULT (strftime('%d-%m-%Y %H:%M','now')),"
+                        "last TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now')),"
                         "deleted INTEGER NOT NULL DEFAULT 0"
                     ");";
 
