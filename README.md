@@ -1,3 +1,5 @@
+
+![[reim-pass.png|485]]
 # Reim Pass
 
 Simple terminal password manager for unix-like operating systems.
@@ -52,6 +54,14 @@ cmake --build build
 
 ```
 
+And optionally (recommended for a comfort use) you can install the program globally with:
+
+```bash
+
+sudo cmake --install build
+
+```
+
 ### Configuration
 
 you can configure the program with a `config.json` file in the `~/.config/reim-pass`.
@@ -66,3 +76,13 @@ you can configure the program with a `config.json` file in the `~/.config/reim-p
 ### Synchronisation
 
 To setup synchronisation first what you need is an external synchronisation software like [Syncthing](https://syncthing.net/) or [Dropbox](https://www.dropbox.com/). Then you set up folder synchronisation in your `[data_directory]/sync/` **DO NOT SET FOLDER SYNCHRONISATION IN ENTIRE `[data_directory]`** because some files have to stay local. Make sure that you have the `synchronisation` property in config set to true **it won't work else**. Remember also to set on every device the same `sync_e2e_encryption`. If you change the property on one device, but don't do the same on every other one, the entire synchronisation won't work.
+
+## Trouble-shooting
+
+1. If you get the error message "Couldn't find clipboard", remember that the supported clipboards are:
+  - wlcopy (for Wayland)
+  - xlip & xsel (for X11)
+  - pbcopy (for Mac)
+  And please make sure that the correct clipboard is installed on your system.
+
+That's all the known problems for now. If you found any please inform me in the "issues" tab on github.
