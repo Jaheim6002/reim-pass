@@ -1,11 +1,16 @@
+***
 
 <p align="center">
-    <img src="reim-pass.png" alt="Logo" width="400">
+    <img src="reim-pass.png" alt="Logo" width="500">
 </p>
 
-# Reim Pass
+***
 
-Simple terminal password manager for unix-like operating systems.
+
+<p align="center">
+    Simple terminal password manager for unix-like operating systems.
+</p>
+
 
 ## Table of contents
 
@@ -15,6 +20,7 @@ Simple terminal password manager for unix-like operating systems.
   - [Compilation](#compilation)
   - [Configuration](#configuration)
   - [Synchronisation](#synchronisation)
+- [Trouble-shooting](#trouble-shooting)
 
 ## Extended description
 
@@ -82,10 +88,9 @@ To setup synchronisation first what you need is an external synchronisation soft
 
 ## Trouble-shooting
 
-1. If you get the error message "Couldn't find clipboard", remember that the supported clipboards are:
+- If you get the error message "Couldn't find clipboard", check if the correct clipboard is installed on your system:
   - wlcopy (for Wayland)
   - xlip & xsel (for X11)
   - pbcopy (for Mac)
-  And please make sure that the correct clipboard is installed on your system.
 
 That's all the known problems for now. If you found any please inform me in the "issues" tab on github.
