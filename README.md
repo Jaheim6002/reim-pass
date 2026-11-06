@@ -2,6 +2,7 @@
 <p align="center">
     <img src="reim-pass.png" alt="Logo" width="400">
 </p>
+
 # Reim Pass
 
 Simple terminal password manager for unix-like operating systems.
