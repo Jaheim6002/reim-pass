@@ -19,6 +19,7 @@ add_executable(reim-pass
     src/start.cpp
     src/manager.cpp
     src/merge.cpp
+    src/config.cpp
 )
 
 target_include_directories(reim-pass PRIVATE ${CMAKE_SOURCE_DIR}/src)

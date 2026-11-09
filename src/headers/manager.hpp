@@ -1,11 +1,9 @@
 #pragma once
 #include "common.hpp"
-#include <string>
-#include <vector>
 
 class MainProgram : Common {
 public:
-    int run(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show);
+    int run(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show, int genPassLenght);
 
 private:
     struct LoginRow {
@@ -22,9 +20,9 @@ private:
     void selectData(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show);
     void updateData(sqlite3* data, const std::string& passphrase);
     void deleteData(sqlite3* data, const std::string& passphrase);
-    void generatePassword(bool copy, int copySec, bool show);
+    void generatePassword(bool copy, int copySec, bool show, int genPassLenght);
     void printBrowseMenu(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show);
-    void printMainMenu(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show);
+    void printMainMenu(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show, int genPassLenght);
     static bool inPath(const std::string& programName);
     static std::optional<std::vector<std::string>> detectClipboard();
     static bool runWithInput(const std::vector<std::string>& args, const std::string& input);

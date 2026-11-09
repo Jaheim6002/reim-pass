@@ -3,8 +3,8 @@
 #include <sys/wait.h>
 #include <cstdlib>
 
-int MainProgram::run(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show) {
-    printMainMenu(data, passphrase, copy, copySec, show);
+int MainProgram::run(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show, int genPassLenght) {
+    printMainMenu(data, passphrase, copy, copySec, show, genPassLenght);
     return 0;
 }
 
@@ -216,7 +216,7 @@ void MainProgram::deleteData(sqlite3* data, const std::string& passphrase) {
     getch();
 }
 
-void MainProgram::generatePassword(bool copy, int copySec, bool show) {
+void MainProgram::generatePassword(bool copy, int copySec, bool show, int genPassLenght) {
     // Visually ambiguous characters (l, I, 1, O, 0) are left out on purpose
     const std::string lower   = "abcdefghijkmnopqrstuvwxyz";
     const std::string upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -224,7 +224,6 @@ void MainProgram::generatePassword(bool copy, int copySec, bool show) {
     const std::string symbols = "!@#$%^&*-_=+?";
     const std::string all     = lower + upper + digits + symbols;
 
-    const int length = 16;
     std::string password;
 
     // Guarantee at least one character from every group
@@ -233,12 +232,12 @@ void MainProgram::generatePassword(bool copy, int copySec, bool show) {
     password += digits[randombytes_uniform(digits.size())];
     password += symbols[randombytes_uniform(symbols.size())];
 
-    while ((int)password.size() < length) {
+    while ((int)password.size() < genPassLenght) {
         password += all[randombytes_uniform(all.size())];
     }
 
     // Fisher-Yates shuffle, so the guaranteed characters are not always at the start
-    for (int i = length - 1; i > 0; i--) {
+    for (int i = genPassLenght - 1; i > 0; i--) {
         int j = randombytes_uniform(i + 1);
         std::swap(password[i], password[j]);
     }
@@ -291,7 +290,7 @@ void MainProgram::printBrowseMenu(sqlite3* data, const std::string& passphrase, 
     }
 }
 
-void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show) {
+void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show, int genPassLenght) {
     std::vector<std::string> mainMenu = {
         "> Add login data",
         "> Browse login data",
@@ -313,7 +312,7 @@ void MainProgram::printMainMenu(sqlite3* data, const std::string& passphrase, bo
                 printBrowseMenu(data, passphrase, copy, copySec, show);
                 break;
             case 2:
-                generatePassword(copy, copySec, show);
+                generatePassword(copy, copySec, show, genPassLenght);
                 break;
             case 3:
                 return;

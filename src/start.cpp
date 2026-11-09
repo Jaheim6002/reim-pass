@@ -1,10 +1,6 @@
 #include "headers/all.hpp"
-#include <fstream>
-#include <nlohmann/json.hpp>
 #include <pwd.h>
 #include <unistd.h>
-
-using json = nlohmann::json;
 
 class StartProgram : Common {
     public:
@@ -23,13 +19,18 @@ class StartProgram : Common {
                 return 1;
             }
 
-            fs::path directory = homeDir() / ".local" / "share" / "reim-pass";
-            bool sync = false;
+            Config conf;
+            Merging merg;
+            MainProgram mp;
+
+            fs::path directory = conf.homeDir() / ".local" / "share" / "reim-pass";
+            bool sync;
             std::string e2ePass = "";
-            bool copyPassword = true;
-            int copySeconds = 20;
-            bool showPassword = true;
-            loadConfig(&directory, &sync, &e2ePass, &copyPassword, &copySeconds, &showPassword);
+            bool copyPassword;
+            int copySeconds;
+            bool showPassword;
+            int genPassLenght;
+            conf.loadConfig(&directory, &sync, &e2ePass, &copyPassword, &copySeconds, &showPassword, &genPassLenght);
             directory = fs::absolute(directory);
             fs::path dbPath = directory / "logindata.db";
 
@@ -46,9 +47,6 @@ class StartProgram : Common {
                 getch();
                 return 1;
             }
-
-            Merging merg;
-            MainProgram mp;
             
             if (sync) {
                 try { merg.Sync(directory, e2ePass); }
@@ -105,7 +103,7 @@ class StartProgram : Common {
                 return 1;
             }
 
-            mp.run(data, passphrase, copyPassword, copySeconds, showPassword);
+            mp.run(data, passphrase, copyPassword, copySeconds, showPassword, genPassLenght);
 
             sqlite3_close(data);
             if (sync) {
@@ -119,79 +117,6 @@ class StartProgram : Common {
     private:
     
         static constexpr const char* kVerifierText = "reimpass-verifier";
-        
-        static fs::path homeDir() {
-            if (const char* home = std::getenv("HOME"); home && *home) {
-                return home;
-            }
-            if (const passwd* pw = getpwuid(getuid())) {
-                return pw->pw_dir;
-            }
-            return {};
-        }
-
-        static fs::path configDir() {
-            if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
-                return fs::path(xdg) / "reim-pass";
-            }
-            return homeDir() / ".config" / "reim-pass";
-        }
-
-        static bool createDefaultConfig(const fs::path& configPath, const fs::path& defaultDir) {
-            std::error_code ec;
-            fs::create_directories(configPath.parent_path(), ec);
-            if (ec) {
-                return false;
-            }
-
-            json config = {
-                {"data_directory", defaultDir.string()},
-                {"synchronisation", false},
-                {"sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE"},
-                {"copy_password", true},
-                {"clear_clipboard", 20},
-                {"show_password", true}
-            };
-
-            std::ofstream file(configPath);
-            if (!file.is_open()) {
-                return false;
-            }
-            file << config.dump(4) << '\n';
-            return file.good();
-        }
-
-        bool loadConfig (fs::path* directory, bool* sync, std::string* e2ePass, bool* copyPassword, int* copySeconds, bool* showPassword) {
-            fs::path configPath = configDir() / "config.json";
-
-            std::error_code ec;
-            if (!fs::exists(configPath, ec)) {
-                createDefaultConfig(configPath, *directory);
-                return false; // no config -> default directory
-            }
-
-            std::ifstream file(configPath);
-            if (!file.is_open()) {
-                return false;
-            }
-
-            try {
-                json config = json::parse(file);
-                std::string dir = config.value("data_directory", "");
-                *sync = config.value("synchronisation", false);
-                *e2ePass = config.value("sync_e2e_encryption", "INSERT.HERE.A.STRONG.PASSPHRASE");
-                *copyPassword = config.value("copy_password", true);
-                *copySeconds = config.value("clear_clipboard", 20);
-                *showPassword = config.value("show_password", true);
-                if (dir.empty()) {
-                    return false;
-                }
-                *directory = homeDir() / dir;
-                return true;
-            } catch (const json::exception&) {
-                return false;
-            }
-        }
 
         std::string SignUp (sqlite3* data) {
             std::string passphrase;
