@@ -2,7 +2,7 @@
 #include <pwd.h>
 #include <unistd.h>
 
-class StartProgram : Common {
+class StartProgram : TuiCommon {
     public:
 
         int run() {

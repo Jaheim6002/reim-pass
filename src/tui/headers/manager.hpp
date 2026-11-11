@@ -1,7 +1,7 @@
 #pragma once
 #include "common.hpp"
 
-class MainProgram : Common {
+class MainProgram : TuiCommon {
 public:
     int run(sqlite3* data, const std::string& passphrase, bool copy, int copySec, bool show, int genPassLenght);
 
