@@ -11,6 +11,10 @@ ApplicationWindow {
     color: Theme.defBackground;
     title: qsTr("Reim Pass — Sign In");
 
+    LogInQml {
+        id: bridge;
+    }
+
     Text {
         id: titleText;
         text: "Reim Pass";

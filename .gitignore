@@ -1,5 +1,7 @@
 #CMAKE
 build/
+.clangd
+.qmlls.ini
 
 .directory
 .reim-pass/
