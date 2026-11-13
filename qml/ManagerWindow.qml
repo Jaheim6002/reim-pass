@@ -12,6 +12,7 @@ ApplicationWindow {
     visible: true;
     color: Theme.defBackground;
     title: qsTr("Reim Pass — Manager");
+    onClosing: Qt.quit()
 
     property string currentPage: "passwords";
 

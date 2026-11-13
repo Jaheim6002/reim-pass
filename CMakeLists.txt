@@ -28,6 +28,7 @@ pkg_check_modules(JSON   REQUIRED IMPORTED_TARGET nlohmann_json)
 add_library(reim-core STATIC
     src/core/merge.cpp
     src/core/config.cpp
+    src/core/context.cpp
 )
 
 target_include_directories(reim-core PUBLIC ${CMAKE_SOURCE_DIR}/src)
@@ -74,6 +75,12 @@ if(REIM_BUILD_GUI)
         src/gui/start.cpp
     )
 
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/qml/themes/Theme.qml
+        ${CMAKE_CURRENT_SOURCE_DIR}/qml/assets/Icons.qml
+        PROPERTIES QT_QML_SINGLETON_TYPE TRUE
+    )
+
     qt_add_qml_module(reim-pass-gui
         URI ReimPass
         VERSION 1.0
@@ -81,6 +88,10 @@ if(REIM_BUILD_GUI)
             qml/StartWindow.qml
             qml/ManagerWindow.qml
             qml/SidebarButton.qml
+            qml/themes/Theme.qml
+            qml/assets/Icons.qml
+        RESOURCES
+            assets/icons/logo.svg
         SOURCES
             src/gui/qml/login.hpp
             src/gui/qml/login.cpp

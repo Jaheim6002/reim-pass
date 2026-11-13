@@ -28,7 +28,7 @@ Made using `ncurses` library, **so it won't work on Windows**.
 
 The manager works really simple, you write your passphrase on start and then you add some login data to the database. Passwords are encrypted with your the passphrase you logged in to the manager.
 
-Login data is stored in SQLite 3 database as well as the passphrase (so you don't have to always type your passphrase twice and if you do any mistakes the program will say it).
+Login data is stored in SQLite 3 database but not the passphrase. The program at your sign up encrypts a verifier with your passphrase and then every next time you log in it tries to decrypt it. If it fails — it means, that either the database is corrupted or the passphrase inputed by you is wrong.
 
 In this password manager you can:
 
@@ -57,18 +57,14 @@ Everything is written in C++.
 To compile just enter the repository and use this commands:
 
 ```bash
-
 cmake -S . -B build
 cmake --build build
-
 ```
 
 And optionally (recommended for a comfort use) you can install the program globally with:
 
 ```bash
-
 sudo cmake --install build
-
 ```
 
 ### Configuration
@@ -90,7 +86,7 @@ To setup synchronisation first what you need is an external synchronisation soft
 ## Trouble-shooting
 
 - If you get the error message "Couldn't find clipboard", check if the correct clipboard is installed on your system:
-  - wlcopy (for Wayland)
+  - wl-clipboard (for Wayland)
   - xlip & xsel (for X11)
   - pbcopy (for Mac)
 

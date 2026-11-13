@@ -16,7 +16,7 @@
 namespace fs = std::filesystem;
 
 class Common {
-    protected:
+    public:
 
         //Encryption
 
@@ -100,8 +100,8 @@ class Common {
 
             sqlite3_stmt* stmt = nullptr;
             if (sqlite3_prepare_v2(data, insertQuery, -1, &stmt, nullptr) != SQLITE_OK) {
-                mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
-                getch();
+                //mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
+                //getch();
                 return false;
             }
 
@@ -114,8 +114,8 @@ class Common {
 
             bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
             if (!ok) {
-                mvprintw(7, 4, "Insert Error: %s", sqlite3_errmsg(data));
-                getch();
+                //mvprintw(7, 4, "Insert Error: %s", sqlite3_errmsg(data));
+                //getch();
             }
 
             sqlite3_finalize(stmt);
@@ -133,8 +133,8 @@ class Common {
 
             sqlite3_stmt* stmt = nullptr;
             if (sqlite3_prepare_v2(data, updateQuery, -1, &stmt, nullptr) != SQLITE_OK) {
-                mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
-                getch();
+                //mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
+                //getch();
                 return false;
             }
 
@@ -145,8 +145,8 @@ class Common {
 
             bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
             if (!ok) {
-                mvprintw(7, 4, "Update Error: %s", sqlite3_errmsg(data));
-                getch();
+                //mvprintw(7, 4, "Update Error: %s", sqlite3_errmsg(data));
+                //getch();
             }
 
             sqlite3_finalize(stmt);
@@ -165,8 +165,8 @@ class Common {
 
             sqlite3_stmt* stmt = nullptr;
             if (sqlite3_prepare_v2(data, deleteQuery, -1, &stmt, nullptr) != SQLITE_OK) {
-                mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
-                getch();
+                //mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
+                //getch();
                 return false;
             }
 
@@ -174,8 +174,8 @@ class Common {
 
             bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
             if (!ok) {
-                mvprintw(7, 4, "Update Error: %s", sqlite3_errmsg(data));
-                getch();
+                //mvprintw(7, 4, "Update Error: %s", sqlite3_errmsg(data));
+                //getch();
             }
 
             sqlite3_finalize(stmt);
@@ -190,8 +190,8 @@ class Common {
 
             sqlite3_stmt* stmt = nullptr;
             if (sqlite3_prepare_v2(data, selectPasswordQuery, -1, &stmt, nullptr) != SQLITE_OK) {
-                mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
-                getch();
+                //mvprintw(7, 4, "SQL Error: %s", sqlite3_errmsg(data));
+                //getch();
                 return std::nullopt;
             }
 

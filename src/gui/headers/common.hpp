@@ -1,6 +1,2 @@
 #include "../../core/headers/common.hpp"
-
-class GuiCommon : protected Common {
-    protected:
-        
-};
+#include "../../core/headers/context.hpp"

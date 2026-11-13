@@ -2,17 +2,34 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
-import 'themes'
-import 'assets'
+import ReimPass
 
 ApplicationWindow {
+    id: startWindow;
     width: 600; height: 480;
     visible: true;
     color: Theme.defBackground;
-    title: qsTr("Reim Pass — Sign In");
-
+    title: {
+        if (!bridge.registered) {
+            qsTr("Reim Pass — Sign Up");
+        } else {
+            qsTr("Reim Pass — Log in");
+        }
+    }
+    
     LogInQml {
         id: bridge;
+    }
+
+    Component {
+        id: managerComponent;
+        ManagerWindow { }
+    }
+
+    function openManager() {
+        var w = managerComponent.createObject(null);
+        w.show();
+        startWindow.hide();
     }
 
     Text {
@@ -78,7 +95,7 @@ ApplicationWindow {
         color: Theme.lightText;
         leftPadding: 12;
         selectByMouse: true;
-        visible: true;
+        visible: !bridge.registered;
 
         background: Rectangle {
             radius: 8;
@@ -89,18 +106,51 @@ ApplicationWindow {
 
     Button {
         id: logInButton;
-        y: 300;
+        y: {
+            if (!bridge.registered) {
+                300;
+            } else {
+                225;
+            }
+        }
         anchors.horizontalCenter: parent.horizontalCenter;
-        text: "Sign in"; 
-        //onClicked: ;
+        text: {
+            if (!bridge.registered) {
+                "Sign up";
+            } else {
+                "Log in";
+            }
+        }
+        onClicked: {
+            bridge.firstPassphrase = firstPassphrase.text;
+            bridge.secondPassphrase = secondPassphrase.text;
+            if (bridge.tryLogIn()) {
+                startWindow.openManager();
+            }
+        }
 
         background: Rectangle {
             radius: 8;
+            width: 64; height: 28;
+            anchors.horizontalCenter: parent.horizontalCenter;
+            anchors.verticalCenter: parent.verticalCenter;
             color: Theme.buttonBackground;
             border.width: 0.5; border.color: logInButton.pressed ? Theme.selectedBorder : Theme.containerBorder;
         }
     }
 
+    Text {
+        text: bridge.errorMessage;
+        y: {
+            if (!bridge.registered) {
+                250;
+            } else {
+                200;
+            }
+        }
+        anchors.horizontalCenter: parent.horizontalCenter;
+        color: Theme.lightText;
+    }
 
     footer: Rectangle {
         height: 24;
