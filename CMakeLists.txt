@@ -88,13 +88,23 @@ if(REIM_BUILD_GUI)
             qml/StartWindow.qml
             qml/ManagerWindow.qml
             qml/SidebarButton.qml
+            qml/ToolbarButton.qml
             qml/themes/Theme.qml
             qml/assets/Icons.qml
         RESOURCES
             assets/icons/logo.svg
+            assets/icons/streamline/key.svg
+            assets/icons/streamline/cog.svg
+            assets/icons/streamline/add.svg
+            assets/icons/streamline/bin.svg
+            assets/icons/streamline/edit.svg
         SOURCES
             src/gui/qml/login.hpp
             src/gui/qml/login.cpp
+            src/gui/qml/loginList.hpp
+            src/gui/qml/loginList.cpp
+            src/gui/qml/browseData.hpp
+            src/gui/qml/browseData.cpp
     )
 
     target_include_directories(reim-pass-gui PRIVATE

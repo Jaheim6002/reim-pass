@@ -4,6 +4,8 @@ import QtQuick
 QtObject {
     // Background
     readonly property color defBackground: '#1e0c11';
+    readonly property color defHoveredBackground: '#2a1118';
+    readonly property color defSelectedBackground: '#38141f';
     readonly property color buttonBackground: '#351118';
     readonly property color panelBackground: '#4b101d';
     readonly property color panel2Background: '#340c14';

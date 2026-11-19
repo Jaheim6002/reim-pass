@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
+#include <qdebug.h>
 #include "../headers/common.hpp"
 
 class LogInQml : public QObject {
@@ -16,7 +17,7 @@ class LogInQml : public QObject {
     QML_ELEMENT
 
 public:
-    explicit LogInQml(QObject *parent = nullptr) {}
+    explicit LogInQml(QObject* = nullptr) {}
 
     bool registered() const {
         return m_registered;

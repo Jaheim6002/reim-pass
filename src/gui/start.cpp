@@ -7,6 +7,7 @@
 #include <qqmlapplicationengine.h>
 
 int main (int argc, char* argv[]) {
+    qputenv("LC_ALL", "C.UTF-8");
     QGuiApplication app(argc, argv);
     QQmlApplicationEngine engine;
 

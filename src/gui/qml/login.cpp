@@ -9,6 +9,7 @@ bool LogInQml::tryLogIn () {
 
     std::optional<std::string> enc = comm.selectPassword(AppContext::Get().data, comm.kVerifierId);
     if (!enc) {
+        qDebug() << "LogInQml::tryLogIn — Logging In: Failed: Verifier is empty, the database may be corrupted"; // idfk what would have to happen
         return false;
     }
 
@@ -20,12 +21,15 @@ bool LogInQml::tryLogIn () {
         return false;
     }
 
+    qDebug() << "LogInQml::tryLogIn — Logging In: Success!";
+
     setError("");
     AppContext::Get().passphrase = received;
     return true;
 }
 
 bool LogInQml::trySignUp () {
+    qDebug() << "LogInQml::trySignUp — Signing up: Started!";
     if (m_firstPassphrase != m_secondPassphrase) {
         setError("Passphrases are not the same");
         return false;
@@ -42,8 +46,11 @@ bool LogInQml::trySignUp () {
 
     if (!comm.insertSQL(AppContext::Get().data, "reimpass", "reimpass.user", verifier)) {
         setError("SQL Error");
+        qWarning() << "LogInQml::trySignUp — Saving Passphrase: SQL Error: " << sqlite3_errmsg(AppContext::Get().data);
         return false;
     }
+
+    qDebug() << "LogInQml::trySignUp — Saving Passphrase: Success!";
 
     AppContext::Get().passphrase = received;
     return true;
